@@ -719,7 +719,7 @@ static void checkIfNextTickWasCalledDuringMicrotask(JSC::VM& vm)
 static void cleanupAsyncHooksData(JSC::VM& vm)
 {
     auto* globalObject = Bun__getDefaultGlobal();
-    globalObject->m_asyncContextData.get()->putInternalField(vm, 0, jsUndefined());
+    globalObject->asyncContextTuple()->putInternalField(vm, 0, jsUndefined());
     globalObject->asyncHooksNeedsCleanup = false;
     if (!globalObject->m_nextTickQueue) {
         vm.setOnEachMicrotaskTick(&checkIfNextTickWasCalledDuringMicrotask);
@@ -1298,10 +1298,10 @@ JSC_DEFINE_HOST_FUNCTION(functionQueueMicrotask,
     }
 
     Zig::GlobalObject* global = JSC::jsCast<Zig::GlobalObject*>(globalObject);
-    JSC::JSValue asyncContext = global->m_asyncContextData.get()->getInternalField(0);
+    JSC::JSValue asyncContextData = global->asyncContextTuple()->getInternalField(0);
 
     // This is a JSC builtin function
-    globalObject->queueMicrotask(global->performMicrotaskFunction(), job, asyncContext,
+    globalObject->queueMicrotask(global->performMicrotaskFunction(), job, asyncContextData,
         JSC::JSValue {}, JSC::JSValue {});
 
     return JSC::JSValue::encode(JSC::jsUndefined());
@@ -2776,13 +2776,13 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionPerformMicrotask, (JSGlobalObject * globalObj
     JSValue result;
     WTF::NakedPtr<JSC::Exception> exceptionPtr;
 
-    JSValue restoreAsyncContext = {};
-    InternalFieldTuple* asyncContextData = nullptr;
-    auto setAsyncContext = callframe->argument(1);
-    if (!setAsyncContext.isUndefined()) {
-        asyncContextData = globalObject->m_asyncContextData.get();
-        restoreAsyncContext = asyncContextData->getInternalField(0);
-        asyncContextData->putInternalField(vm, 0, setAsyncContext);
+    JSValue oldAsyncContextData = {};
+    InternalFieldTuple* asyncContextTuple = nullptr;
+    auto newAsyncContextData = callframe->argument(1);
+    if (!newAsyncContextData.isUndefined()) {
+        asyncContextTuple = globalObject->asyncContextTuple();
+        oldAsyncContextData = asyncContextTuple->getInternalField(0);
+        asyncContextTuple->putInternalField(vm, 0, newAsyncContextData);
     }
 
     size_t argCount = callframe->argumentCount();
@@ -2802,8 +2802,8 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionPerformMicrotask, (JSGlobalObject * globalObj
 
     JSC::call(globalObject, job, callData, jsUndefined(), arguments, exceptionPtr);
 
-    if (asyncContextData) {
-        asyncContextData->putInternalField(vm, 0, restoreAsyncContext);
+    if (asyncContextTuple) {
+        asyncContextTuple->putInternalField(vm, 0, oldAsyncContextData);
     }
 
     if (auto* exception = exceptionPtr.get()) {
@@ -2843,19 +2843,19 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionPerformMicrotaskVariadic, (JSGlobalObject * g
         thisValue = callframe->argument(3);
     }
 
-    JSValue restoreAsyncContext = {};
-    InternalFieldTuple* asyncContextData = nullptr;
-    auto setAsyncContext = callframe->argument(2);
-    if (!setAsyncContext.isUndefined()) {
-        asyncContextData = globalObject->m_asyncContextData.get();
-        restoreAsyncContext = asyncContextData->getInternalField(0);
-        asyncContextData->putInternalField(vm, 0, setAsyncContext);
+    JSValue oldAsyncContextData = {};
+    InternalFieldTuple* asyncContextTuple = nullptr;
+    auto newAsyncContextData = callframe->argument(2);
+    if (!newAsyncContextData.isUndefined()) {
+        asyncContextTuple = globalObject->asyncContextTuple();
+        oldAsyncContextData = asyncContextTuple->getInternalField(0);
+        asyncContextTuple->putInternalField(vm, 0, newAsyncContextData);
     }
 
     JSC::call(globalObject, job, callData, thisValue, arguments, exceptionPtr);
 
-    if (asyncContextData) {
-        asyncContextData->putInternalField(vm, 0, restoreAsyncContext);
+    if (asyncContextTuple) {
+        asyncContextTuple->putInternalField(vm, 0, oldAsyncContextData);
     }
 
     if (auto* exception = exceptionPtr.get()) {
